@@ -42,14 +42,14 @@ class TestSubtitleWrapping(unittest.TestCase):
         self.assertEqual(add_line_breaks("", 10), "")
 
     def test_default_wrapping(self):
-        # Default is 14 chars
-        # 14 chars (length 14)
-        text_14 = "一" * 14
-        self.assertEqual(add_line_breaks(text_14), text_14)
+        # Default is 13 chars (updated for font size 70)
+        # 13 chars (length 13)
+        text_13 = "一" * 13
+        self.assertEqual(add_line_breaks(text_13), text_13)
         
-        # 15 chars (length 15) -> should wrap
-        text_15 = "一" * 15
-        self.assertEqual(add_line_breaks(text_15), "一"*14 + "\\N" + "一")
+        # 14 chars (length 14) -> should wrap
+        text_14 = "一" * 14
+        self.assertEqual(add_line_breaks(text_14), "一"*13 + "\\N" + "一")
 
 if __name__ == '__main__':
     unittest.main()

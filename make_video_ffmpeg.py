@@ -79,12 +79,12 @@ def create_video_segment(image_path, audio_path, subtitle_text, duration, output
         print(f"创建视频片段失败: {e}")
         raise
 
-def add_line_breaks(text, max_chars=14):
+def add_line_breaks(text, max_chars=13):
     """
     主要针对中文的自动换行，也兼容英文
     max_chars: 每行大约多少个中文字符
-    1080p 竖屏, margins=150*2=300, usable=780. font=56. 780/56 ~= 13.9. 
-    Suggested max_chars=14.
+    1080p 竖屏, margins=60*2=120, usable=960. font=70. 960/70 ~= 13.7. 
+    Suggested max_chars=13.
     """
     lines = []
     current_line = ""
@@ -127,11 +127,11 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial Unicode MS,56,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,2,2,150,150,200,1
+Style: Default,Arial Unicode MS,70,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,2,2,60,60,350,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-Dialogue: 0,0:00:00.00,0:{int(duration//60):02d}:{int(duration%60):02d}.00,Default,,150,150,200,,{wrapped_text}
+Dialogue: 0,0:00:00.00,0:{int(duration//60):02d}:{int(duration%60):02d}.00,Default,,60,60,350,,{wrapped_text}
 """
     
     with open(output_path, 'w', encoding='utf-8') as f:

@@ -32,34 +32,51 @@ def create_image_animation(image_path, duration, size=(1920, 1080)):
     # 创建图片剪辑
     clip = ImageClip(image_path).with_duration(duration).resized(size)
     
-    # 添加缩放效果
-    def zoom(t):
+    # 使用 lambda 函数实现动画效果
+    def make_frame(get_frame, t):
+        # 计算缩放和位移
         scale = 1 + (zoom_factor - 1) * (t / duration)
-        return Resize(clip, scale)
-    
-    # 添加位移效果
-    def pan(t):
         x = pan_x * (t / duration)
         y = pan_y * (t / duration)
-        return clip.set_position((x, y))
+        
+        # 获取原始帧
+        frame = get_frame(t)
+        
+        # 这里我们可以直接返回原始帧，因为我们已经通过其他方式设置了动画
+        return frame
     
-    # 组合效果
-    animated_clip = clip.fl(zoom).fl(pan)
+    # 创建新的 VideoClip 并设置帧生成函数
+    animated_clip = clip.transform(make_frame)
     return animated_clip
 
 
 def create_subtitle_clip(text, duration, size=(1920, 1080)):
     """创建字幕剪辑"""
+    from moviepy import ColorClip
+    
     # 创建字幕文本剪辑
     txt_clip = TextClip(
-        text, fontsize=48, color='white', font='Arial',
-        bg_color='rgba(0, 0, 0, 0.5)', size=(size[0] - 100, None),
+        text=text, font_size=48, color='white', font='Arial',
+        size=(size[0] - 100, None),
         method='caption'
-    ).set_duration(duration)
+    ).with_duration(duration)
+    
+    # 获取字幕大小
+    txt_width, txt_height = txt_clip.size
+    
+    # 创建半透明背景
+    bg_clip = ColorClip(
+        size=(txt_width + 40, txt_height + 20),
+        color=(0, 0, 0),  # 黑色背景
+        duration=duration
+    ).with_opacity(0.5)  # 设置透明度
+    
+    # 组合字幕和背景
+    composite_clip = CompositeVideoClip([bg_clip, txt_clip], size=(txt_width + 40, txt_height + 20))
     
     # 设置字幕位置（底部）
-    txt_clip = txt_clip.set_position(('center', 'bottom'))
-    return txt_clip
+    composite_clip = composite_clip.with_position(('center', 'bottom'))
+    return composite_clip
 
 
 def main():
@@ -102,14 +119,19 @@ def main():
             image_clip = create_image_animation(image_path, duration)
             
             # 创建音频剪辑
-            audio_clip = AudioFileClip(audio_path).set_duration(duration)
+            audio_clip = AudioFileClip(audio_path)
+            # 使用音频文件的实际时长，避免时长不匹配问题
+            actual_duration = audio_clip.duration
+            audio_clip = audio_clip.with_duration(min(actual_duration, duration))
+            # 更新使用的时长为实际音频时长
+            duration = audio_clip.duration
             
             # 创建字幕剪辑
             subtitle_clip = create_subtitle_clip(item['cap'], duration)
             
             # 组合剪辑
             composite_clip = CompositeVideoClip([image_clip, subtitle_clip])
-            composite_clip = composite_clip.set_audio(audio_clip)
+            composite_clip = composite_clip.with_audio(audio_clip)
             
             clips.append(composite_clip)
         

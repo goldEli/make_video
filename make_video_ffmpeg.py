@@ -6,6 +6,13 @@ import tempfile
 import subprocess
 import requests
 
+# 全局效果控制参数
+EFFECT_INTENSITY = 0.6  # 效果强度 (0.0 - 1.0)
+EFFECT_FREQUENCY = 0.5  # 效果频率 (每秒关键帧数)
+FPS = 25                # 视频帧率
+ZOOM_INPUT_W = 2160     # Zoompan 输入宽度 (2x 1080)
+ZOOM_INPUT_H = 3840     # Zoompan 输入高度 (2x 1920)
+
 def download_resource(url, output_path):
     """下载资源文件"""
     print(f"下载资源: {url}")
@@ -38,33 +45,33 @@ def create_video_segment(image_path, audio_path, subtitle_text, duration, output
     except Exception as e:
         print(f"获取音频时长失败，使用原始时长: {e}")
     
-    # 生成随机动画参数
-    zoom_start = 1.0
-    zoom_end = random.uniform(1.02, 1.05)  # 减小缩放范围，降低计算量
-    pan_x = random.uniform(-10, 10)  # 减小位移范围
-    pan_y = random.uniform(-5, 5)
+    # 生成随机动画效果
+    zoompan_filter = generate_zoompan_filter(
+        duration, 
+        EFFECT_INTENSITY, 
+        EFFECT_FREQUENCY, 
+        FPS,
+        ZOOM_INPUT_W,
+        ZOOM_INPUT_H
+    )
     
     # 创建字幕文件
     subtitle_file = os.path.join(os.path.dirname(output_path), f"subtitle_{index}.ass")
     create_subtitle_file(subtitle_text, subtitle_file, duration)
     
-    # 构建 FFmpeg 命令，使用 ASS 字幕文件
-    # 9:16 竖屏比例：1080x1920
-    
+    # 构建 FFmpeg 命令
+    # 关键点：
+    # 1. 先 scale 到 2160x3840 (1080x2倍)，为 zoompan 提供更高分辨率的输入，减少模糊
+    # 2. 应用 zoompan 动画并输出 1080x1920
+    # 3. 最后叠加字幕
     cmd = [
         'ffmpeg', '-y',
-        # 输入图片
-        '-loop', '1', '-i', image_path,
-        # 输入音频
+        '-loop', '1', '-t', str(duration), '-i', image_path,
         '-i', audio_path,
-        # 缩放图片并添加 ASS 字幕
-        '-vf', f"scale=1080:1920,ass={subtitle_file}",
-        # 编码设置
-        '-c:v', 'libx264', '-preset', 'fast', '-crf', '25',  # 使用 faster preset
+        '-vf', f"scale={ZOOM_INPUT_W}:{ZOOM_INPUT_H},{zoompan_filter},ass={subtitle_file}",
+        '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
         '-c:a', 'aac', '-b:a', '128k',
-        # 时长设置
-        '-t', str(duration),
-        # 输出文件
+        '-shortest',
         output_path
     ]
     
@@ -78,6 +85,85 @@ def create_video_segment(image_path, audio_path, subtitle_text, duration, output
     except Exception as e:
         print(f"创建视频片段失败: {e}")
         raise
+
+def generate_zoompan_filter(duration, intensity, frequency, fps, width, height):
+    """
+    生成随机关键帧的 zoompan 滤镜字符串
+    duration: 片段时长（秒）
+    intensity: 缩放/平移强度 (0.0 - 1.0)
+    frequency: 关键帧频率 (Hz)
+    width, height: 输入图像的分辨率（用于计算平移限制）
+    """
+    total_frames = int(duration * fps)
+    if total_frames <= 0: return "scale=1080:1920"
+    
+    # 基础缩放 1.0 - 1.3 (基于intensity)
+    base_zoom = 1.0
+    # 最大缩放，不超过 1.5 倍 (针对 2x 输入图，实际 zoompan 内部 zoom=1 是输出尺寸/输入尺寸?)
+    # FFmpeg zoompan zoom=1 意味着显示区域大小等于输出大小(1080x1920)。
+    # 如果输入是 2160x3840，那么 zoom=1 时，显示区域是 1080x1920 (即裁剪出 1080x1920 的区域)。
+    # 不，zoompan 的 zoom 值是相对于 "输出尺寸" 的视窗大小吗？
+    # Doc: "Zoom is the zoom factor. verify the range of the zoom factor is [1, 10]."
+    # Zoom=1 means the crop size is same as input size? No.
+    # Actually zoompan works on the input image. 
+    # Let's assume input WxH. Output wxh.
+    # zoom=1 means we see the whole WxH image scaled down to wxh.
+    # zoom=2 means we see half the WxH image scaled to wxh.
+    
+    # However, to avoid upscale blur, we upscaled input to 2x. 
+    # So if we want to show "full image", we need to see the full 2160x3840.
+    # But filters like zoompan often normalize coordinates.
+    # Actually, simpler logic:
+    # 1. We have 2160x3840 input.
+    # 2. We want output 1080x1920.
+    # 3. If "zoom=1" in zoompan typically means "show full input frame scaled to output", 
+    #    then that's fine.
+    #    But if we want to zoom IN, we increase zoom.
+    
+    # Range:
+    min_zoom = 1.0
+    max_zoom = 1.0 + (0.5 * intensity) # Max 1.5x zoom
+    
+    # 生成关键帧
+    num_keyframes = max(2, int(duration * frequency) + 1)
+    keyframes = []
+    for i in range(num_keyframes):
+        frame = int(i * total_frames / (num_keyframes - 1))
+        z = random.uniform(min_zoom, max_zoom)
+        
+        # 计算 (x, y) 坐标
+        # zoompan 的 x,y 是视窗左上角的坐标。
+        # 视窗大小 (vw, vh) = (InputW / z, InputH / z) ?? 
+        # No, zoompan manual says: zoom=1 displays the whole input frame.
+        # Let's verify behavior. Usually:
+        # x, y range is approx: InputW * (1 - 1/z) and InputH * (1 - 1/z).
+        # Because we want to keep the aspect ratio 9:16.
+        
+        max_x = width * (1 - 1/z)
+        max_y = height * (1 - 1/z)
+        
+        x = random.uniform(0, max_x)
+        y = random.uniform(0, max_y)
+        
+        keyframes.append({'f': frame, 'z': z, 'x': x, 'y': y})
+
+    def get_interp_expr(attr):
+        expr = f"{keyframes[0][attr]}"
+        for i in range(len(keyframes) - 1):
+            f1, f2 = keyframes[i]['f'], keyframes[i+1]['f']
+            v1, v2 = keyframes[i][attr], keyframes[i+1][attr]
+            if f1 == f2: continue
+            # 线性插值
+            interp = f"({v1}+({v2}-{v1})*(on-{f1})/({f2}-{f1}))"
+            expr = f"if(between(on,{f1},{f2}),{interp},{expr})"
+        return expr
+
+    z_expr = get_interp_expr('z')
+    x_expr = get_interp_expr('x')
+    y_expr = get_interp_expr('y')
+    
+    # s=1080x1920 means the output resolution.
+    return f"zoompan=z='{z_expr}':x='{x_expr}':y='{y_expr}':d={total_frames}:s=1080x1920:fps={fps}"
 
 def add_line_breaks(text, max_chars=13):
     """

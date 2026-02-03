@@ -51,6 +51,12 @@ def create_video_segment(image_path, audio_path, subtitle_text, duration, output
     # 构建简化的 FFmpeg 命令
     # 使用更简单的滤镜，避免复杂的表达式
     # 9:16 竖屏比例：1080x1920
+    # 使用 Arial Unicode MS 字体，支持中文显示
+    font_file = '/System/Library/Fonts/Supplemental/Arial Unicode.ttf'
+    
+    # 构建字幕滤镜
+    subtitle_filter = f"drawtext=text='{subtitle_text}':fontcolor=white:fontsize=48:box=1:boxcolor=black@0.5:boxborderw=5:x=(w-text_w)/2:y=h-150:fontfile={font_file}"
+    
     cmd = [
         'ffmpeg', '-y',
         # 输入图片
@@ -58,7 +64,7 @@ def create_video_segment(image_path, audio_path, subtitle_text, duration, output
         # 输入音频
         '-i', audio_path,
         # 缩放图片并添加字幕
-        '-vf', f"scale=1080:1920,drawtext=text='{subtitle_text}':fontcolor=white:fontsize=48:box=1:boxcolor=black@0.5:boxborderw=5:x=(w-text_w)/2:y=h-150:fontfile=/System/Library/Fonts/PingFang.ttc",
+        '-vf', f"scale=1080:1920,{subtitle_filter}",
         # 编码设置
         '-c:v', 'libx264', '-preset', 'fast', '-crf', '25',  # 使用 faster preset
         '-c:a', 'aac', '-b:a', '128k',

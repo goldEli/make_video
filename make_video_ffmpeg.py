@@ -79,33 +79,39 @@ def create_video_segment(image_path, audio_path, subtitle_text, duration, output
         print(f"创建视频片段失败: {e}")
         raise
 
+def add_line_breaks(text, max_chars=14):
+    """
+    主要针对中文的自动换行，也兼容英文
+    max_chars: 每行大约多少个中文字符
+    1080p 竖屏, margins=150*2=300, usable=780. font=56. 780/56 ~= 13.9. 
+    Suggested max_chars=14.
+    """
+    lines = []
+    current_line = ""
+    current_length = 0
+    
+    # 遍历每个字符
+    for char in text:
+        # 中文字符算1，其他(如英文、数字、标点)算0.5
+        char_len = 1 if ord(char) > 127 else 0.5
+        
+        # 如果加上当前字符会超出限制（且当前行不为空），则换行
+        if current_length + char_len > max_chars and current_line:
+            lines.append(current_line)
+            current_line = char
+            current_length = char_len
+        else:
+            current_line += char
+            current_length += char_len
+            
+    if current_line:
+        lines.append(current_line)
+        
+    # ASS格式换行符是 \N
+    return '\\N'.join(lines)
+
 def create_subtitle_file(text, output_path, duration):
     """创建 ASS 字幕文件"""
-    # 手动添加换行符，确保字幕不会超出屏幕宽度
-    # 对于 1080x1920 竖屏，字体大小 56，每行最多约 15-18 个中文字符
-    def add_line_breaks(text, max_chars=16):
-        words = text.split(' ')
-        lines = []
-        current_line = []
-        current_length = 0
-        
-        for word in words:
-            # 估算每个词的长度（中文字符算1，英文字符算0.5）
-            word_length = sum(1 if ord(c) > 127 else 0.5 for c in word)
-            
-            if current_length + word_length <= max_chars:
-                current_line.append(word)
-                current_length += word_length
-            else:
-                if current_line:
-                    lines.append(' '.join(current_line))
-                current_line = [word]
-                current_length = word_length
-        
-        if current_line:
-            lines.append(' '.join(current_line))
-        
-        return '\\n'.join(lines)
     
     # 添加换行符
     wrapped_text = add_line_breaks(text)

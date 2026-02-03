@@ -2,3 +2,4 @@
 .DS_Store
 filelist.txt
 input.json
+___pycache__
